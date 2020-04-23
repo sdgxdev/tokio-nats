@@ -17,7 +17,15 @@ pub(crate) enum ServerOp {
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 pub(crate) struct ServerInfo {
     server_id: String,
+    server_name: String,
     version: String,
+    go: String,
+    host: String,
+    port: u32,
+    max_payload: usize,
+    client_id: u32,
+    client_ip: String,
+    connect_urls: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

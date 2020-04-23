@@ -109,7 +109,8 @@ pub struct NatsConfig {
 pub async fn connect(config: NatsConfig) -> Result<NatsClient, Error> {
     let (op_sender, op_receiver) = channel(config.buffer_size);
 
-    let (_, framed) = create_connection(&config).await?;
+    let (info, framed) = create_connection(&config).await?;
+    debug!("server info: {:#?}", info);
 
     let client_inner = Arc::new(NatsClientInner {
         config: config.clone(),
