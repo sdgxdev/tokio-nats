@@ -10,7 +10,7 @@ async fn print_message(message: NatsMessage) {
 async fn main() {
     env_logger::init();
     let config = NatsConfigBuilder::default()
-        .server("127.0.0.1:4222")
+        .servers(vec!["127.0.0.1:4222".to_owned(), "127.0.0.1:4224".to_owned()])
         .build()
         .unwrap();
     let mut client_sub = connect(config.clone()).await.unwrap();

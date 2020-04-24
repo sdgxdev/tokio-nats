@@ -12,6 +12,7 @@ use tokio;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{channel, error::TrySendError, Receiver, Sender};
 use tokio::time::{delay_for, timeout};
+use rand::{thread_rng, seq::SliceRandom};
 
 use futures_util::future::{FutureExt, TryFutureExt};
 use futures_util::select;
@@ -83,7 +84,7 @@ pub struct NatsConfig {
     #[builder(default = "5000")]
     buffer_size: usize,
     /// The host and port of the NATS server to connect to. E.g. `127.0.0.1:4222`
-    server: String,
+    servers: Vec<String>,
     #[builder(default = "None")]
     name: Option<String>,
     /// How often should the client send `PING` messages to the server to confirm that the connection
@@ -136,29 +137,56 @@ pub async fn connect(config: NatsConfig) -> Result<NatsClient, Error> {
     })
 }
 
+async fn connect_random_server(config: &NatsConfig) -> TcpStream {
+    loop {
+        let choose_server = &SocketAddr::from_str(
+            &config.servers.choose(&mut thread_rng()).unwrap_or(&"".to_owned()))
+            .expect("unable to parse server address");
+        match TcpStream::connect(choose_server).await {
+            Ok(conn) => return conn,
+            Err(e) => {
+                info!("failed to connect server {:?}: {:?}", choose_server, e);
+                delay_for(config.reconnection_period).await;
+                continue
+            }
+        };
+    }
+}
+
 async fn create_connection(
     config: &NatsConfig,
 ) -> Result<(ServerInfo, Framed<TcpStream, NatsCodec>), Error> {
     debug!("creating connection to NATS");
-    let tcp_connection = TcpStream::connect(&SocketAddr::from_str(&config.server).unwrap()).await?;
-    let mut framed = Framed::new(tcp_connection, NatsCodec::new());
-    let first_op = framed.next().await.ok_or(Error::ProtocolError)??;
-    let info = if let ServerOp::Info(info) = first_op {
-        info
-    } else {
-        return Err(Error::ProtocolError);
-    };
-    framed
-        .send(ClientOp::Connect(ClientInfo {
-            verbose: false,
-            pedantic: false,
-            name: config.name.clone(),
-            lang: "tokio-nats-rs".to_string(),
-            version: "0.1".to_string(),
-        }))
-        .await?;
+    loop {
+        let tcp_connection = connect_random_server(config).await;
+        let mut framed = Framed::new(tcp_connection, NatsCodec::new());
+        debug!("before get first op");
+        let first_op = framed.next().await.unwrap()?;
+        debug!("after first_op");
+        match first_op {
+            ServerOp::Info(si) => {
+                if si.connect_urls.len() == 0 {
+                    framed.close().await?;
+                    continue;
+                }
+                framed
+                    .send(ClientOp::Connect(ClientInfo {
+                        verbose: false,
+                        pedantic: false,
+                        name: config.name.clone(),
+                        lang: "tokio-nats-rs".to_string(),
+                        version: "0.1".to_string(),
+                    }))
+                    .await?;
 
-    Ok((info, framed))
+                return Ok((si, framed))
+            }
+            other => {
+                debug!("got other server hit: {:?}", other);
+                delay_for(config.reconnection_period).await;
+            }
+        }
+    }
 }
 
 #[derive(Debug)]

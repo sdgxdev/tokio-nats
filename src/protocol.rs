@@ -25,7 +25,8 @@ pub(crate) struct ServerInfo {
     max_payload: usize,
     client_id: u32,
     client_ip: String,
-    connect_urls: Vec<String>,
+    #[serde(default)]
+    pub connect_urls: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
