@@ -160,9 +160,7 @@ async fn create_connection(
     loop {
         let tcp_connection = connect_random_server(config).await;
         let mut framed = Framed::new(tcp_connection, NatsCodec::new());
-        debug!("before get first op");
         let first_op = framed.next().await.unwrap()?;
-        debug!("after first_op");
         match first_op {
             ServerOp::Info(si) => {
                 if si.connect_urls.len() == 0 {

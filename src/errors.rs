@@ -1,16 +1,28 @@
 use std::num::ParseIntError;
 use std::str::Utf8Error;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
+    #[error("ProtocolError")]
     ProtocolError,
+    #[error("ClientClosed")]
     ClientClosed,
+    #[error("SendBufferFull")]
     SendBufferFull,
-    IOError(std::io::Error),
-    EncodingError(Utf8Error),
+    #[error("IOError: {0}")]
+    IOError(#[from] std::io::Error),
+    #[error("EncodingError: {0}")]
+    EncodingError(#[from] Utf8Error),
+    #[error("ConnectionTimeout")]
     ConnectionTimeout,
+    #[error("SerdeError: {0}")]
+    SerdeError(#[from] serde_json::error::Error),
+    #[error("ParseIntError: {0}")]
+    ParseIntError(#[from] ParseIntError),
 }
 
+/*
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
         Error::IOError(err)
@@ -34,3 +46,4 @@ impl From<serde_json::error::Error> for Error {
         Error::ProtocolError
     }
 }
+*/
