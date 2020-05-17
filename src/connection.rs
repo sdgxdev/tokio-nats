@@ -5,7 +5,6 @@ use crate::{NatsMessage, NatsSubscription};
 use bytes::Bytes;
 use parking_lot::Mutex;
 use std::net::SocketAddr;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio;
@@ -84,7 +83,7 @@ pub struct NatsConfig {
     #[builder(default = "5000")]
     buffer_size: usize,
     /// The host and port of the NATS server to connect to. E.g. `127.0.0.1:4222`
-    servers: Vec<String>,
+    servers: Vec<SocketAddr>,
     #[builder(default = "None")]
     name: Option<String>,
     /// How often should the client send `PING` messages to the server to confirm that the connection
@@ -139,9 +138,8 @@ pub async fn connect(config: NatsConfig) -> Result<NatsClient, Error> {
 
 async fn connect_random_server(config: &NatsConfig) -> TcpStream {
     loop {
-        let choose_server = &SocketAddr::from_str(
-            &config.servers.choose(&mut thread_rng()).unwrap_or(&"".to_owned()))
-            .expect("unable to parse server address");
+        let choose_server =
+            &config.servers.choose(&mut thread_rng()).expect("server addresses must not empty").to_owned();
         match TcpStream::connect(choose_server).await {
             Ok(conn) => return conn,
             Err(e) => {
@@ -163,7 +161,7 @@ async fn create_connection(
         let first_op = framed.next().await.unwrap()?;
         match first_op {
             ServerOp::Info(si) => {
-                if si.connect_urls.len() == 0 {
+                if config.servers.len() > 1 && si.connect_urls.len() == 0 {
                     framed.close().await?;
                     continue;
                 }
